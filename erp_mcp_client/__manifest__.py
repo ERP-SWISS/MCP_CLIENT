@@ -1,5 +1,5 @@
 {
-    'name': "MCP Claude GPT",
+    'name': "MCP Claude GPT - Connect your Odoo to any AI in minutes.",
     'summary': "Register this Odoo instance with an ERP MCP registrar",
     'author': 'ERP SWISS',
     'version': '1.0',
