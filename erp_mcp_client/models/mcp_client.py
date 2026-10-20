@@ -22,7 +22,7 @@ class McpClient(models.Model):
         default='https://mcp.erpswiss.com/mcp/register',
     )
 
-    odoo_url = fields.Char(string="Odoo URL", required=True, default= lambda self: self.env["ir.config_parameter"].sudo().get_param("web.base.url"))
+    odoo_url = fields.Char(string="Odoo URL", required=True, default= lambda self: self.env["ir.config_parameter"].sudo().get_str("web.base.url"))
     odoo_db = fields.Char(string="Odoo Database", required=True, default=lambda self: self.env.cr.dbname)
     odoo_login = fields.Char(string="Odoo Login / User")
     odoo_api_key = fields.Char(string="Odoo API Key")
@@ -70,7 +70,7 @@ class McpClient(models.Model):
     def action_fill_odoo_url(self):
         """Fill the Odoo URL with this instance's base URL, forcing https."""
         self.ensure_one()
-        base_url = self.env["ir.config_parameter"].sudo().get_param("web.base.url") or ""
+        base_url = self.env["ir.config_parameter"].sudo().get_str("web.base.url")
         base_url = base_url.strip().rstrip("/")
         if base_url.startswith("http://"):
             base_url = "https://" + base_url[len("http://"):]
