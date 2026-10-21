@@ -12,5 +12,5 @@
     'license': 'OPL-1',
     'application': True,
     'installable': True,
-    'images': ['static/description/mcp-connector-cover.gif'],
+    'images': ['static/description/mcp-connector-cover.png'],
 }
