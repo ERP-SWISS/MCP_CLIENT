@@ -27,14 +27,35 @@ class McpClient(models.Model):
     odoo_login = fields.Char(string="Odoo Login / User")
     odoo_api_key = fields.Char(string="Odoo API Key")
 
-    google_client_id = fields.Char(string="Google Client ID", required=True)
-    google_client_secret = fields.Char(string="Google Client Secret", required=True)
+    use_google_oauth = fields.Boolean(
+        string="Use Google OAuth",
+        default=True,
+        help="Enable to let users sign in to the MCP with their Google account. "
+             "Requires a Google OAuth Client ID and Secret. When disabled, the "
+             "AI client connects with an access token instead.",
+    )
+    auth_method = fields.Selection(
+        selection=[
+            ("google_oauth", "Google OAuth"),
+            ("access_token", "Access Token"),
+        ],
+        string="Authentication",
+        compute="_compute_auth_method",
+    )
+    google_client_id = fields.Char(string="Google Client ID")
+    google_client_secret = fields.Char(string="Google Client Secret")
 
     odoo_admin_emails = fields.Char(
         string="Admin Emails",
         help="Comma-separated Google emails granted the 'admin' role (they act "
              "as the Odoo user behind the API Key above). Put here the email(s) "
              "you log into the MCP with so you get access after registering.",
+    )
+    odoo_admin_access_tokens = fields.Char(
+        string="Admin Access Tokens",
+        help="Comma-separated static Bearer tokens granted the 'admin' role "
+             "(Authorization: Bearer <token>) — lets a non-interactive client "
+             "call the MCP without a Google login.",
     )
     role_ids = fields.One2many(
         comodel_name="erp.mcp.client.role",
@@ -85,21 +106,35 @@ class McpClient(models.Model):
         self.odoo_db = self.env.cr.dbname
         return True
 
-    def action_open_google_cloud_console(self):
-        """Open the Google Cloud Platform credentials console in a new tab."""
-        self.ensure_one()
-        return {
-            "type": "ir.actions.act_url",
-            "url": "https://console.cloud.google.com/apis/credentials",
-            "target": "new",
-        }
+    @api.depends("use_google_oauth")
+    def _compute_auth_method(self):
+        for rec in self:
+            rec.auth_method = "google_oauth" if rec.use_google_oauth else "access_token"
 
     @api.depends('mcp_url')
     def _compute_mcp_calback_url(self):
         for rec in self:
-            rec.mcp_ai_url = f'https://{str(rec.mcp_url).rstrip("/")}'
-            rec.mcp_https_url = f'{rec.mcp_ai_url.removesuffix("/mcp")}'
+            if not rec.mcp_url:
+                rec.mcp_ai_url = rec.mcp_https_url = rec.mcp_callback_url = False
+                continue
+            url = rec.mcp_url.strip().rstrip("/")
+            if not url.startswith(("http://", "https://")):
+                url = f"https://{url}"
+            rec.mcp_ai_url = url
+            rec.mcp_https_url = url.removesuffix("/mcp")
             rec.mcp_callback_url = rec.mcp_https_url + '/auth/callback'
+
+    @api.constrains("use_google_oauth", "google_client_id", "google_client_secret")
+    def _check_google_oauth(self):
+        for rec in self:
+            if rec.use_google_oauth and not (
+                (rec.google_client_id or "").strip()
+                and (rec.google_client_secret or "").strip()
+            ):
+                raise ValidationError(_(
+                    "Google Client ID and Google Client Secret are required "
+                    "when \"Use Google OAuth\" is enabled."
+                ))
 
     def _check_registrar_url(self):
         for record in self:
@@ -119,14 +154,18 @@ class McpClient(models.Model):
             "odoo_db": self.odoo_db,
             "odoo_login": self.odoo_login,
             "odoo_api_key": self.odoo_api_key,
-            "google_client_id": self.google_client_id,
-            "google_client_secret": self.google_client_secret,
+            "auth_method": self.auth_method,
+            "use_google_oauth": self.use_google_oauth,
+            "google_client_id": self.google_client_id if self.use_google_oauth else "",
+            "google_client_secret": self.google_client_secret if self.use_google_oauth else "",
             "odoo_admin_emails": self.odoo_admin_emails or "",
+            "odoo_admin_access_tokens": self.odoo_admin_access_tokens or "",
             "roles": [
                 {
                     "role_name": role.role_name,
                     "odoo_api_key": role.odoo_api_key,
                     "emails": role.emails or "",
+                    "access_tokens": role.access_tokens or "",
                 }
                 for role in self.role_ids
             ],
@@ -142,6 +181,15 @@ class McpClient(models.Model):
     def action_register(self):
         self.ensure_one()
         self._check_registrar_url()
+        self._check_google_oauth()
+        if not self.use_google_oauth and not (
+            (self.odoo_admin_access_tokens or "").strip()
+            or any((role.access_tokens or "").strip() for role in self.role_ids)
+        ):
+            raise UserError(_(
+                "Google OAuth is disabled: set at least one Access Token "
+                "(on a role) so the AI client can connect."
+            ))
         endpoint = self.registrar_url.rstrip("/")
         envelope = {
             "jsonrpc": "2.0",
