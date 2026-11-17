@@ -9,6 +9,7 @@
                 <field name="name"/>
                 <field name="registrar_url"/>
                 <field name="odoo_url"/>
+                <field name="use_google_oauth" optional="show" widget="boolean"/>
                 <field name="mcp_url" optional="show"/>
                 <field name="registration_state" widget="badge"
                        decoration-success="registration_state == 'registered'"
@@ -41,25 +42,17 @@
                     <div class="oe_title">
                         <label for="name"/>
                         <h1>
-                            <field name="name" placeholder="e.g. any Name"/>
+                            <field name="name" placeholder="e.g. My Company MCP"/>
                         </h1>
                     </div>
+
+                    <div class="alert alert-danger" role="alert" invisible="not last_error">
+                        <strong><i class="fa fa-exclamation-triangle me-1"/>Last error: </strong>
+                        <field name="last_error" readonly="1" class="d-inline"/>
+                    </div>
+
                     <group>
-                        <group string="Registrar" invisible="1">
-                            <field name="registrar_url" placeholder="https://mcp.mycompany.com"/>
-                        </group>
-                        <group string="Google OAuth">
-                            <field name="google_client_id"/>
-                            <field name="google_client_secret" password="True"/>
-                              <div class="o_row mb-2">
-                                <button name="action_open_google_cloud_console" type="object"
-                                        string="Open Google Cloud Console" icon="fa-external-link"
-                                        class="btn-link"/>
-                            </div>
-                        </group>
-                    </group>
-                    <group string="This Odoo Instance">
-                        <group>
+                        <group string="This Odoo Instance">
                             <label for="odoo_url"/>
                             <div class="o_row">
                                 <field name="odoo_url" placeholder="https://myodoo.example.com" nolabel="1"/>
@@ -75,36 +68,84 @@
                                         class="btn-link" title="Fill with the current database name"/>
                             </div>
                         </group>
+                        <group string="Authentication">
+                            <field name="use_google_oauth" widget="boolean_toggle"/>
+                            <field name="google_client_id"
+                                   invisible="not use_google_oauth"
+                                   required="use_google_oauth"
+                                   placeholder="xxxxxxxx.apps.googleusercontent.com"/>
+                            <field name="google_client_secret" password="True"
+                                   invisible="not use_google_oauth"
+                                   required="use_google_oauth"/>
+                            <div colspan="2" class="mt-1" invisible="not use_google_oauth">
+                                <a href="https://console.cloud.google.com/apis/credentials"
+                                   target="_blank" rel="noopener noreferrer" role="button" class="btn btn-link p-0">
+                                    <i class="fa fa-external-link me-1"/>Open Google Cloud Console
+                                </a>
+                            </div>
+                            <div colspan="2" class="text-muted small" invisible="use_google_oauth">
+                                <i class="fa fa-key me-1"/>
+                                Google sign-in is disabled: the AI client will connect
+                                with an access token instead.
+                            </div>
+                        </group>
+                        <group string="Registrar" invisible="1">
+                            <field name="registrar_url" placeholder="https://mcp.mycompany.com"/>
+                        </group>
                         <group invisible="1">
                             <field name="odoo_login"/>
                             <field name="odoo_api_key" password="True"/>
                             <field name="odoo_admin_emails"
                                    placeholder="you@example.com, teammate@example.com"/>
+                            <field name="odoo_admin_access_tokens" password="True"
+                                   placeholder="a static token for machine clients (optional)"/>
                         </group>
                     </group>
-                    <group string="Registration Result">
-                        <field name="mcp_url" invisible="1"/>
-                        <group string="URL`S" invisible="not mcp_url">
-                            <field name="mcp_https_url" widget="CopyClipboardChar"/>
-                            <field name="mcp_callback_url" widget="CopyClipboardChar"/>
+
+                    <separator string="Registration Result"/>
+                    <field name="mcp_url" invisible="1"/>
+                    <div class="alert alert-info" role="alert" invisible="mcp_url">
+                        <i class="fa fa-info-circle me-1"/>
+                        Fill in the settings above and click <strong>Register</strong>
+                        to get your AI connector URL.
+                    </div>
+                    <group invisible="not mcp_url">
+                        <group string="Connector URLs">
                             <field name="mcp_ai_url" widget="CopyClipboardChar"/>
+                            <field name="mcp_https_url" widget="CopyClipboardChar"
+                                   invisible="not use_google_oauth"/>
+                            <field name="mcp_callback_url" widget="CopyClipboardChar"
+                                   invisible="not use_google_oauth"/>
                         </group>
-                        <group>
+                        <group string="Details">
+                            <field name="auth_method"/>
                             <field name="tenant_uuid"/>
                             <field name="remote_state"/>
                             <field name="registered_on"/>
                         </group>
-                        <field name="last_error" readonly="1"
-                               invisible="not last_error"
-                               class="text-danger"/>
                     </group>
+                    <div class="text-muted small" invisible="not mcp_url or not use_google_oauth">
+                        <i class="fa fa-lightbulb-o me-1"/>
+                        Add the <strong>Google Origin URL</strong> to "Authorized JavaScript origins"
+                        and the <strong>Google Callback URL</strong> to "Authorized redirect URIs"
+                        of your OAuth client in Google Cloud Console.
+                    </div>
+
                     <notebook>
                         <page string="Access Roles" name="roles">
+                            <div class="text-muted small mb-2">
+                                Each role maps Google emails and/or access tokens to the API key
+                                of an Odoo user. The AI acts with that user's permissions.
+                                Access tokens are sent as <code>Authorization: Bearer &lt;token&gt;</code>
+                                and need no Google login.
+                            </div>
                             <field name="role_ids">
                                 <list editable="bottom">
-                                    <field name="role_name"/>
+                                    <field name="role_name" placeholder="e.g. admin, sales, readonly"/>
                                     <field name="odoo_api_key" password="True"/>
-                                    <field name="emails"/>
+                                    <field name="emails" placeholder="you@example.com, teammate@example.com"/>
+                                    <field name="access_tokens" password="True"
+                                           placeholder="token-X"/>
                                 </list>
                             </field>
                         </page>

@@ -28,3 +28,8 @@ class McpClientRole(models.Model):
         string="Allowed Emails",
         help="Comma-separated Google emails that log into the MCP as this role.",
     )
+    access_tokens = fields.Char(
+        string="Access Tokens",
+        help="Comma-separated static Bearer tokens that authenticate as this "
+             "role (Authorization: Bearer <token>), no Google login needed.",
+    )
