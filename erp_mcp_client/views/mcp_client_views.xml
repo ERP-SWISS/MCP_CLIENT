@@ -11,9 +11,14 @@
                 <field name="odoo_url"/>
                 <field name="use_google_oauth" optional="show" widget="boolean"/>
                 <field name="mcp_url" optional="show"/>
+                <field name="paid_until" optional="show"/>
+                <field name="remote_state" optional="show" widget="badge"
+                       decoration-success="remote_state == 'active'"
+                       decoration-warning="remote_state in ('renewal', 'payment_due')"
+                       decoration-danger="remote_state in ('expired', 'blocked', 'revoked')"/>
                 <field name="registration_state" widget="badge"
                        decoration-success="registration_state == 'registered'"
-                       decoration-danger="registration_state == 'error'"
+                       decoration-danger="registration_state in ('error', 'expired', 'blocked', 'revoked')"
                        decoration-muted="registration_state == 'draft'"/>
             </list>
         </field>
@@ -27,18 +32,55 @@
                 <header>
                     <button name="action_register" type="object" string="Register"
                             class="btn-primary" icon="fa-paper-plane"
-                            invisible="registration_state == 'registered'"/>
+                            invisible="registration_state not in ('draft', 'error')"/>
+                    <button name="action_pay_now" type="object" string="Pay Now"
+                            class="btn-primary" icon="fa-credit-card"
+                            invisible="not tenant_uuid or remote_state in ('blocked', 'revoked')"/>
                     <button name="action_register" type="object" string="Re-register"
                             icon="fa-refresh"
-                            invisible="registration_state != 'registered'"/>
+                            invisible="registration_state in ('draft', 'error')"/>
+                    <button name="action_check_subscription" type="object" string="Check Subscription"
+                            icon="fa-refresh"
+                            invisible="not tenant_uuid"/>
                     <field name="registration_state" widget="statusbar"
                            statusbar_visible="draft,registered"/>
                 </header>
+                <div class="alert alert-danger d-flex align-items-center mb-0 rounded-0" role="alert"
+                     invisible="not last_error">
+                    <div class="flex-grow-1">
+                        <strong><i class="fa fa-exclamation-triangle me-1" title="Error"/>Error: </strong>
+                        <field name="last_error" readonly="1" class="d-inline"/>
+                        <div class="mt-1">
+                            Need help? Contact our support team:
+                            <a href="https://www.erpswiss.com/helpdesk/mcp-connector-support-26"
+                               target="_blank" class="alert-link">
+                                https://www.erpswiss.com/helpdesk/mcp-connector-support-26
+                            </a>
+                        </div>
+                    </div>
+                    <a href="https://www.erpswiss.com/helpdesk/mcp-connector-support-26"
+                       target="_blank" role="button" class="btn btn-danger ms-3">
+                        <i class="fa fa-life-ring me-1" title="Support"/>Contact Support
+                    </a>
+                </div>
                 <sheet>
-                    <widget name="web_ribbon" title="Registered" bg_color="text-bg-success"
-                            invisible="registration_state != 'registered'"/>
+                    <!-- Ribbon = exact tenant status on the registrar. The
+                         statusbar says whether the connector works
+                         (Registered) or why it is stopped. -->
                     <widget name="web_ribbon" title="Error" bg_color="text-bg-danger"
                             invisible="registration_state != 'error'"/>
+                    <widget name="web_ribbon" title="Active" bg_color="text-bg-success"
+                            invisible="registration_state in ('draft', 'error') or remote_state != 'active'"/>
+                    <widget name="web_ribbon" title="Renewal" bg_color="text-bg-warning"
+                            invisible="registration_state in ('draft', 'error') or remote_state != 'renewal'"/>
+                    <widget name="web_ribbon" title="Payment Due" bg_color="text-bg-warning"
+                            invisible="registration_state in ('draft', 'error') or remote_state != 'payment_due'"/>
+                    <widget name="web_ribbon" title="Expired" bg_color="text-bg-danger"
+                            invisible="registration_state in ('draft', 'error') or remote_state != 'expired'"/>
+                    <widget name="web_ribbon" title="Blocked" bg_color="text-bg-danger"
+                            invisible="registration_state in ('draft', 'error') or remote_state != 'blocked'"/>
+                    <widget name="web_ribbon" title="Revoked" bg_color="text-bg-danger"
+                            invisible="registration_state in ('draft', 'error') or remote_state != 'revoked'"/>
                     <div class="oe_title">
                         <label for="name"/>
                         <h1>
@@ -46,9 +88,55 @@
                         </h1>
                     </div>
 
-                    <div class="alert alert-danger" role="alert" invisible="not last_error">
-                        <strong><i class="fa fa-exclamation-triangle me-1"/>Last error: </strong>
-                        <field name="last_error" readonly="1" class="d-inline"/>
+                    <field name="payment_url" invisible="1"/>
+                    <div class="alert alert-warning d-flex align-items-center" role="alert"
+                         invisible="remote_state != 'renewal' or not payment_url">
+                        <div class="flex-grow-1">
+                            <i class="fa fa-clock-o me-1" title="Payment due"/>
+                            Your subscription is paid until <field name="paid_until" readonly="1" class="d-inline fw-bold"/>.
+                            Amount due: <field name="amount_due" readonly="1" class="d-inline fw-bold"/>
+                            <field name="billing_currency" readonly="1" class="d-inline fw-bold"/>.
+                        </div>
+                        <button name="action_pay_now" type="object" string="Pay Now" class="btn-primary"/>
+                    </div>
+                    <div class="alert alert-warning d-flex align-items-center" role="alert"
+                         invisible="remote_state != 'payment_due' or not payment_url">
+                        <div class="flex-grow-1">
+                            <i class="fa fa-users me-1" title="Unpaid users"/>
+                            <strong><field name="unpaid_user_count" readonly="1" class="d-inline"/> user(s)
+                                are not paid</strong> for the current month
+                            (<field name="paid_user_count" readonly="1" class="d-inline"/> paid).
+                            Amount for the remaining days:
+                            <field name="amount_due" readonly="1" class="d-inline fw-bold"/>
+                            <field name="billing_currency" readonly="1" class="d-inline fw-bold"/>.
+                            Please pay by <field name="payment_due_date" readonly="1" class="d-inline fw-bold"/>,
+                            otherwise your subscription will be suspended.
+                        </div>
+                        <button name="action_pay_now" type="object" string="Pay Now" class="btn-primary"/>
+                    </div>
+                    <div class="alert alert-danger d-flex align-items-center" role="alert"
+                         invisible="remote_state != 'expired'">
+                        <div class="flex-grow-1">
+                            <i class="fa fa-ban me-1" title="Expired"/>
+                            <strong>The MCP connector is not active</strong> — payment is required
+                            (the subscription has expired, or the free month was already used by
+                            this Odoo instance). It is activated automatically right after payment.
+                        </div>
+                        <button name="action_pay_now" type="object" string="Pay Now" class="btn-primary"/>
+                    </div>
+                    <div class="alert alert-danger d-flex align-items-center" role="alert"
+                         invisible="remote_state not in ('blocked', 'revoked')">
+                        <div class="flex-grow-1">
+                            <i class="fa fa-ban me-1" title="Suspended"/>
+                            <strong>The MCP connector has been
+                                <field name="remote_state" readonly="1" class="d-inline"/>
+                                by ERP SWISS</strong> — AI clients cannot use it. Please contact our
+                            support team to reactivate it.
+                        </div>
+                        <a href="https://www.erpswiss.com/helpdesk/mcp-connector-support-26"
+                           target="_blank" role="button" class="btn btn-danger ms-3">
+                            <i class="fa fa-life-ring me-1" title="Support"/>Contact Support
+                        </a>
                     </div>
 
                     <group>
@@ -68,6 +156,20 @@
                                         class="btn-link" title="Fill with the current database name"/>
                             </div>
                         </group>
+                        <group string="Partner">
+                            <field name="referral_code" placeholder="Optional — e.g. ACME20"
+                                   readonly="referral_valid"/>
+                            <field name="referral_valid" invisible="1"/>
+                            <div colspan="2" class="text-success small" invisible="not referral_valid">
+                                <i class="fa fa-check me-1" title="Accepted"/>
+                                Code accepted — partner: <field name="referral_partner" readonly="1" class="d-inline"/>
+                            </div>
+                            <div colspan="2" class="text-warning small"
+                                 invisible="referral_valid or not referral_code or registration_state == 'draft'">
+                                <i class="fa fa-exclamation-triangle me-1" title="Unknown code"/>
+                                This partner code was not recognised by the registrar.
+                            </div>
+                        </group>
                         <group string="Authentication">
                             <field name="use_google_oauth" widget="boolean_toggle"/>
                             <field name="google_client_id"
@@ -80,11 +182,11 @@
                             <div colspan="2" class="mt-1" invisible="not use_google_oauth">
                                 <a href="https://console.cloud.google.com/apis/credentials"
                                    target="_blank" rel="noopener noreferrer" role="button" class="btn btn-link p-0">
-                                    <i class="fa fa-external-link me-1"/>Open Google Cloud Console
+                                    <i class="fa fa-external-link me-1" title="Open"/>Open Google Cloud Console
                                 </a>
                             </div>
                             <div colspan="2" class="text-muted small" invisible="use_google_oauth">
-                                <i class="fa fa-key me-1"/>
+                                <i class="fa fa-key me-1" title="Access token"/>
                                 Google sign-in is disabled: the AI client will connect
                                 with an access token instead.
                             </div>
@@ -105,7 +207,7 @@
                     <separator string="Registration Result"/>
                     <field name="mcp_url" invisible="1"/>
                     <div class="alert alert-info" role="alert" invisible="mcp_url">
-                        <i class="fa fa-info-circle me-1"/>
+                        <i class="fa fa-info-circle me-1" title="Info"/>
                         Fill in the settings above and click <strong>Register</strong>
                         to get your AI connector URL.
                     </div>
@@ -123,9 +225,22 @@
                             <field name="remote_state"/>
                             <field name="registered_on"/>
                         </group>
+                        <group string="Subscription">
+                            <field name="billing_email" widget="email" placeholder="billing@mycompany.com"/>
+                            <field name="paid_until"/>
+                            <field name="billing_user_count"/>
+                            <field name="paid_user_count"/>
+                            <label for="billing_unit_amount"/>
+                            <div class="o_row">
+                                <field name="billing_unit_amount" nolabel="1"/>
+                                <field name="billing_currency" nolabel="1"/>
+                                <span>/ user / month</span>
+                            </div>
+                            <field name="subscription_checked_on"/>
+                        </group>
                     </group>
                     <div class="text-muted small" invisible="not mcp_url or not use_google_oauth">
-                        <i class="fa fa-lightbulb-o me-1"/>
+                        <i class="fa fa-lightbulb-o me-1" title="Tip"/>
                         Add the <strong>Google Origin URL</strong> to "Authorized JavaScript origins"
                         and the <strong>Google Callback URL</strong> to "Authorized redirect URIs"
                         of your OAuth client in Google Cloud Console.
@@ -134,18 +249,23 @@
                     <notebook>
                         <page string="Access Roles" name="roles">
                             <div class="text-muted small mb-2">
-                                Each role maps Google emails and/or access tokens to the API key
-                                of an Odoo user. The AI acts with that user's permissions.
-                                Access tokens are sent as <code>Authorization: Bearer &lt;token&gt;</code>
-                                and need no Google login.
+                                Pick an Odoo user and paste its API key: the AI acts with that
+                                user's permissions. The account email is taken from the user and
+                                can be edited. Access tokens are sent as
+                                <code>Authorization: Bearer &lt;token&gt;</code> and need no Google
+                                login — use <i class="fa fa-refresh" title="Generate"/> to generate one.
                             </div>
                             <field name="role_ids">
                                 <list editable="bottom">
-                                    <field name="role_name" placeholder="e.g. admin, sales, readonly"/>
+                                    <field name="user_id" options="{'no_create': True}"/>
                                     <field name="odoo_api_key" password="True"/>
-                                    <field name="emails" placeholder="you@example.com, teammate@example.com"/>
-                                    <field name="access_tokens" password="True"
-                                           placeholder="token-X"/>
+                                    <field name="emails"
+                                           column_invisible="not parent.use_google_oauth"
+                                           placeholder="you@example.com"/>
+                                    <field name="access_tokens" widget="CopyClipboardChar"
+                                           required="not parent.use_google_oauth"/>
+                                    <button name="action_generate_token" type="object"
+                                            icon="fa-refresh" title="Generate access token"/>
                                 </list>
                             </field>
                         </page>

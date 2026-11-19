@@ -2,11 +2,12 @@
     'name': "MCP Connector for Claude, ChatGPT & any AI",
     'summary': "Register this Odoo instance with an ERP MCP registrar",
     'author': 'ERP SWISS',
-    'version': '20.0.1.0.0',
+    'version': '20.0.1.3.0',
     'description': """ERP SWISS""",
     'depends': ['base'],
     'data': [
         'security/ir.access.csv',
+        'data/ir_cron.xml',
         'views/mcp_client_views.xml',
     ],
     'license': 'OPL-1',
